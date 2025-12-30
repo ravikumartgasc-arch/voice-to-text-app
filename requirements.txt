@@ -1,3 +1,2 @@
 streamlit
 google-genai
-yt-dlp>=2024.12.0
