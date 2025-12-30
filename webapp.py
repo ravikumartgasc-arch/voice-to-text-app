@@ -12,24 +12,31 @@ genai.configure(api_key=API_KEY)
 st.set_page_config(page_title="Universal AI Transcriber", layout="centered")
 st.title("🎙️ Universal AI Transcriber")
 
-# --- DEBUG: CHECK VERSION ---
-# This will show us if the update worked
-st.caption(f"System Version: Google GenAI {genai.__version__}")
+# --- SIDEBAR: SYSTEM DIAGNOSTICS ---
+# This helps us see if the library update worked
+st.sidebar.header("System Status")
+st.sidebar.text(f"Library Version: {genai.__version__}")
 
-if genai.__version__ < "0.7.0":
-    st.error("⚠️ CRITICAL ERROR: The app is using an old version. Please REBOOT the app in the menu.")
-    st.stop()
+if st.sidebar.button("Check Available Models"):
+    try:
+        st.sidebar.write("Fetching models...")
+        models = [m.name for m in genai.list_models()]
+        st.sidebar.success("Connection works!")
+        st.sidebar.json(models)
+    except Exception as e:
+        st.sidebar.error(f"Error: {e}")
 
 # --- 1. DOWNLOADER ---
 def download_video(url):
     st.info(f"⏳ Connecting to: {url}...")
     filename_base = "downloaded_media"
     
-    # Cleanup
+    # Cleanup old files
     for ext in ['.mp4', '.m4a', '.mp3', '.webm', '.mkv']:
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
+    # Force MP4 to prevent format errors
     ydl_opts = {
         'format': 'best[ext=mp4]/best', 
         'outtmpl': filename_base + '.%(ext)s',
@@ -57,7 +64,7 @@ def transcribe_media(file_path):
         st.error("❌ File not found.")
         return
 
-    # MIME Type Fix
+    # MIME Type Fix (Crucial for Cloud)
     mime_type = "video/mp4"
     if file_path.endswith(".mp3"): mime_type = "audio/mp3"
     elif file_path.endswith(".wav"): mime_type = "audio/wav"
@@ -70,7 +77,7 @@ def transcribe_media(file_path):
         st.info("🚀 Uploading to Gemini...")
         video_file = genai.upload_file(path=file_path, mime_type=mime_type)
         
-        with st.spinner("⏳ AI is processing..."):
+        with st.spinner("⏳ AI is processing (this takes 10-30s)..."):
             while video_file.state.name == "PROCESSING":
                 time.sleep(2)
                 video_file = genai.get_file(video_file.name)
@@ -81,8 +88,8 @@ def transcribe_media(file_path):
 
         st.success("✅ Transcribing...")
         
-        # Use the specific model version to avoid 404
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        # CORRECT MODEL NAME
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         prompt = "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."
         response = model.generate_content([video_file, prompt])
