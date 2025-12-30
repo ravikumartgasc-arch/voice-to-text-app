@@ -7,7 +7,7 @@ from google.genai import types
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY HERE
-API_KEY = "PAIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw" 
+API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw" 
 MODEL_NAME = "gemini-flash-latest"
 
 st.set_page_config(page_title="AI Transcriber", layout="centered")
@@ -114,3 +114,4 @@ with tab2:
         with open("temp_upload.mp4", "wb") as f:
             f.write(uploaded_file.getbuffer())
         transcribe("temp_upload.mp4")
+
