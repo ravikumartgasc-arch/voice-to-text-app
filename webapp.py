@@ -9,7 +9,7 @@ from google.genai import types
 # PASTE YOUR API KEY HERE
 API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw"
 
-# 1. SETUP CLIENT (NEW SDK)
+# 1. SETUP CLIENT
 try:
     client = genai.Client(api_key=API_KEY)
 except Exception as e:
@@ -17,56 +17,65 @@ except Exception as e:
     st.stop()
 
 st.set_page_config(page_title="Universal AI Transcriber", layout="centered")
-st.title("🎙️ Universal AI Transcriber (2.5 Flash)")
-st.caption("Powered by Gemini 2.5 Flash • Supports YouTube, Facebook, Uploads")
+st.title("🎙️ Universal AI Transcriber")
+st.caption("Powered by Gemini 2.5 Flash • Optimized for Speed")
 
-# --- 2. DOWNLOADER ---
-def download_video(url):
+# --- 2. DOWNLOADER (AUDIO ONLY FIX) ---
+def download_audio(url):
     st.info(f"⏳ Connecting to: {url}...")
-    filename_base = "downloaded_media"
+    filename_base = "downloaded_audio"
     
-    # Cleanup
-    for ext in ['.mp4', '.m4a', '.mp3', '.webm', '.mkv']:
+    # Cleanup old files
+    for ext in ['.mp3', '.m4a', '.wav', '.webm']:
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
-    # Force MP4 for compatibility
+    # TRICK: Download Audio Only (Bypasses Video Blocks)
     ydl_opts = {
-        'format': 'best[ext=mp4]/best', 
+        'format': 'bestaudio/best', # Request audio only
         'outtmpl': filename_base + '.%(ext)s',
         'quiet': True,
         'no_warnings': True,
+        'postprocessors': [{  # Force convert to MP3 for compatibility
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        # Use a generic User-Agent to look like a standard PC
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            final_filename = ydl.prepare_filename(info)
+            # The file will be .mp3 because of the postprocessor
+            final_filename = "downloaded_audio.mp3"
+            
             if not os.path.exists(final_filename) or os.path.getsize(final_filename) == 0:
-                st.error("❌ Download failed.")
+                st.error("❌ Download failed. YouTube blocked the server IP.")
                 return None
-            st.success(f"✅ Downloaded: {final_filename}")
+            
+            st.success(f"✅ Audio Downloaded!")
             return final_filename
     except Exception as e:
         st.error(f"❌ Download Error: {e}")
         return None
 
-# --- 3. TRANSCRIBE (NEW SDK SYNTAX) ---
+# --- 3. TRANSCRIBE ---
 def transcribe_media(file_path):
     if not os.path.exists(file_path):
         st.error("❌ File not found.")
         return
 
-    st.write(f"📄 Processing file: `{file_path}`")
+    st.write(f"📄 Processing file...")
 
     try:
         st.info("🚀 Uploading to Gemini 2.5...")
         
-        # New Upload Syntax
+        # Upload
         video_file = client.files.upload(file=file_path)
         
-        with st.spinner("⏳ AI is processing (this takes 10-30s)..."):
+        with st.spinner("⏳ AI is processing..."):
             while video_file.state.name == "PROCESSING":
                 time.sleep(2)
                 video_file = client.files.get(name=video_file.name)
@@ -77,7 +86,7 @@ def transcribe_media(file_path):
 
         st.success("✅ Transcribing...")
         
-        # New Generate Syntax
+        # Generate
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[
@@ -94,13 +103,13 @@ def transcribe_media(file_path):
         st.error(f"❌ Error: {e}")
 
 # --- UI ---
-tab1, tab2 = st.tabs(["🔗 Link", "📂 Upload"])
+tab1, tab2 = st.tabs(["🔗 YouTube/Link", "📂 Upload File"])
 
 with tab1:
     url = st.text_input("Paste Link:")
     if st.button("Transcribe Link"):
         if url:
-            f = download_video(url)
+            f = download_audio(url)
             if f: transcribe_media(f)
 
 with tab2:
