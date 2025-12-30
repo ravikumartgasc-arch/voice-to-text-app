@@ -1,3 +1,3 @@
-git+https://github.com/yt-dlp/yt-dlp.git@master
 streamlit
-google-genai
+google-generativeai
+git+https://github.com/yt-dlp/yt-dlp.git@master
