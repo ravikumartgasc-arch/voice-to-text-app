@@ -5,7 +5,6 @@ import yt_dlp
 import google.generativeai as genai
 
 # --- CONFIGURATION ---
-# PASTE YOUR API KEY HERE
 API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw"
 
 genai.configure(api_key=API_KEY)
@@ -13,7 +12,15 @@ genai.configure(api_key=API_KEY)
 st.set_page_config(page_title="Universal AI Transcriber", layout="centered")
 st.title("🎙️ Universal AI Transcriber")
 
-# --- 1. DOWNLOADER (Force MP4 for Safety) ---
+# --- DEBUG: CHECK VERSION ---
+# This will show us if the update worked
+st.caption(f"System Version: Google GenAI {genai.__version__}")
+
+if genai.__version__ < "0.7.0":
+    st.error("⚠️ CRITICAL ERROR: The app is using an old version. Please REBOOT the app in the menu.")
+    st.stop()
+
+# --- 1. DOWNLOADER ---
 def download_video(url):
     st.info(f"⏳ Connecting to: {url}...")
     filename_base = "downloaded_media"
@@ -23,7 +30,6 @@ def download_video(url):
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
-    # We force 'ext=mp4' so Google AI definitely accepts it
     ydl_opts = {
         'format': 'best[ext=mp4]/best', 
         'outtmpl': filename_base + '.%(ext)s',
@@ -36,65 +42,54 @@ def download_video(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             final_filename = ydl.prepare_filename(info)
-            
             if not os.path.exists(final_filename) or os.path.getsize(final_filename) == 0:
-                st.error("❌ Download failed: File empty.")
+                st.error("❌ Download failed.")
                 return None
-            
             st.success(f"✅ Downloaded: {final_filename}")
             return final_filename
-
     except Exception as e:
         st.error(f"❌ Download Error: {e}")
         return None
 
-# --- 2. TRANSCRIBE (With MIME-TYPE Fix) ---
+# --- 2. TRANSCRIBE ---
 def transcribe_media(file_path):
     if not os.path.exists(file_path):
         st.error("❌ File not found.")
         return
 
-    # Determine the correct MIME type so Google doesn't reject it
-    mime_type = "video/mp4" # Default to video
-    if file_path.lower().endswith(".mp3"):
-        mime_type = "audio/mp3"
-    elif file_path.lower().endswith(".wav"):
-        mime_type = "audio/wav"
-    elif file_path.lower().endswith(".m4a"):
-        mime_type = "audio/mp4"
-    elif file_path.lower().endswith(".ogg"):
-        mime_type = "audio/ogg"
+    # MIME Type Fix
+    mime_type = "video/mp4"
+    if file_path.endswith(".mp3"): mime_type = "audio/mp3"
+    elif file_path.endswith(".wav"): mime_type = "audio/wav"
+    elif file_path.endswith(".m4a"): mime_type = "audio/mp4"
+    elif file_path.endswith(".ogg"): mime_type = "audio/ogg"
         
     st.write(f"📄 Processing as: `{mime_type}`")
 
     try:
         st.info("🚀 Uploading to Gemini...")
-        
-        # --- THE FIX: We explicitly pass 'mime_type' here ---
         video_file = genai.upload_file(path=file_path, mime_type=mime_type)
         
-        with st.spinner("⏳ AI is processing (this takes 10-30s)..."):
+        with st.spinner("⏳ AI is processing..."):
             while video_file.state.name == "PROCESSING":
                 time.sleep(2)
                 video_file = genai.get_file(video_file.name)
 
         if video_file.state.name == "FAILED":
-            st.error(f"❌ AI Processing Failed. Google rejected the file format.\nDetails: {video_file}")
+            st.error(f"❌ Processing Failed. Details: {video_file}")
             return
 
         st.success("✅ Transcribing...")
         
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Use the specific model version to avoid 404
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
         
-        prompt = "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language (English/Indian) and write in native script."
-        
+        prompt = "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."
         response = model.generate_content([video_file, prompt])
         
         if response.text:
             st.text_area("Result:", value=response.text, height=400)
             st.download_button("Download Text", response.text, file_name="transcription.txt")
-        else:
-            st.warning("⚠️ Empty response from AI.")
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
@@ -112,7 +107,6 @@ with tab1:
 with tab2:
     uploaded = st.file_uploader("Upload File", type=['mp3', 'mp4', 'wav', 'm4a'])
     if uploaded and st.button("Transcribe Upload"):
-        # Save with correct extension
         ext = os.path.splitext(uploaded.name)[1]
         save_path = f"temp_upload{ext}"
         with open(save_path, "wb") as f:
