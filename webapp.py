@@ -121,3 +121,4 @@ with tab2:
         with open("temp_upload.mp4", "wb") as f:
             f.write(uploaded.getbuffer())
         transcribe_media("temp_upload.mp4")
+
