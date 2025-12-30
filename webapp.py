@@ -2,116 +2,122 @@ import streamlit as st
 import os
 import time
 import yt_dlp
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY HERE
-API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw" 
-MODEL_NAME = "gemini-flash-latest"
+API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw"
 
-st.set_page_config(page_title="AI Transcriber", layout="centered")
-st.title("🎙️ Universal AI Transcriber")
+# Configure the Stable Library
+genai.configure(api_key=API_KEY)
 
-def get_client():
-    return genai.Client(api_key=API_KEY)
+st.set_page_config(page_title="Universal Transcriber", layout="centered")
+st.title("🎙️ AI Transcriber (Stable Version)")
 
+# --- 1. TEST API KEY ON START ---
+try:
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    # Quick test to see if Key works
+    response = model.generate_content("Hello")
+except Exception as e:
+    st.error(f"❌ API Key Error: Please check your API Key. Details: {e}")
+    st.stop()
+
+# --- 2. DOWNLOADER FUNCTION ---
 def download_video(url):
-    st.info(f"Attempting download from: {url}...")
+    st.info(f"⏳ Connecting to: {url}...")
     filename_base = "downloaded_media"
-
-    # Cleanup old files
+    
+    # Clean up old files
     for ext in ['.mp4', '.m4a', '.mp3', '.webm']:
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
-    # 1. Configure downloader for Facebook/YouTube
+    # Browser Masquerade Options
     ydl_opts = {
-        'format': 'best', 
+        'format': 'best',
         'outtmpl': filename_base + '.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'nocheckcertificate': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             final_filename = ydl.prepare_filename(info)
-
-            # CRITICAL CHECK: Did it actually download?
+            
+            # Check if file actually exists and has size
             if not os.path.exists(final_filename) or os.path.getsize(final_filename) == 0:
-                st.error("Download failed: File is empty or missing.")
+                st.error("❌ Download failed: File is empty.")
                 return None
-
-            st.success(f"Downloaded: {final_filename}")
+            
+            st.success(f"✅ Downloaded: {final_filename}")
             return final_filename
 
     except Exception as e:
-        st.error(f"Download Error: {str(e)}")
+        st.error(f"❌ Download Error: {e}")
+        if "facebook" in url:
+            st.warning("💡 Facebook Hint: Facebook blocks servers often. Please download the video manually on your phone/PC, then use the 'Upload File' tab.")
         return None
 
-def transcribe(file_path):
-    if not file_path or not os.path.exists(file_path):
-        st.error("Error: No file to process.")
+# --- 3. TRANSCRIBE FUNCTION (STABLE) ---
+def transcribe_media(file_path):
+    if not os.path.exists(file_path):
+        st.error("❌ Error: File not found.")
         return
 
-    client = get_client()
-    st.info("Uploading file to AI...")
-
+    # Check file size
+    file_size = os.path.getsize(file_path) / (1024 * 1024) # Size in MB
+    st.write(f"📄 File Size: {file_size:.2f} MB")
+    
     try:
-        media_file = client.files.upload(file=file_path)
-
-        with st.spinner("AI is processing (this takes 10-20s)..."):
-            while media_file.state.name == "PROCESSING":
+        st.info("🚀 Uploading to Gemini (this may take time)...")
+        # Upload using the Stable V1 API
+        video_file = genai.upload_file(path=file_path)
+        
+        # Wait for processing
+        with st.spinner("⏳ AI is processing the video..."):
+            while video_file.state.name == "PROCESSING":
                 time.sleep(2)
-                media_file = client.files.get(name=media_file.name)
+                video_file = genai.get_file(video_file.name)
 
-        if media_file.state.name == "FAILED":
-            st.error("AI Processing Failed. The video format might be unsupported.")
+        if video_file.state.name == "FAILED":
+            st.error("❌ AI Processing Failed. The video format might be unsupported.")
             return
 
-        st.success("Transcribing...")
-
-        prompt = "Listen to the audio (English or any Indian language). Transcribe exactly as spoken in the native script."
-
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[media_file, prompt],
-            config=types.GenerateContentConfig(
-                safety_settings=[
-                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")
-                ]
-            )
-        )
-
+        st.success("✅ Ready! Transcribing now...")
+        
+        # Transcribe
+        prompt = "Listen to the audio. Transcribe it exactly as spoken (Verbatim) in the native script (English/Indian Languages). Do not translate."
+        
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content([video_file, prompt])
+        
         if response.text:
-            st.text_area("Result:", value=response.text, height=400)
+            st.subheader("📝 Transcription:")
+            st.text_area("Result", value=response.text, height=400)
             st.download_button("Download Text", response.text, file_name="transcription.txt")
         else:
-            st.error("Empty response from AI.")
+            st.warning("⚠️ The AI returned empty text. (Audio might be silent?)")
 
     except Exception as e:
-        st.error(f"System Error: {e}")
+        st.error(f"❌ System Error: {e}")
 
-# --- UI ---
+# --- UI TABS ---
 tab1, tab2 = st.tabs(["🔗 Paste Link", "📂 Upload File"])
 
 with tab1:
-    url_input = st.text_input("Paste Facebook/YouTube Link:")
+    url = st.text_input("Paste Link (YouTube/Facebook):")
     if st.button("Transcribe Link"):
-        if url_input:
-            f = download_video(url_input)
-            if f: transcribe(f)
+        if url:
+            f = download_video(url)
+            if f: transcribe_media(f)
 
 with tab2:
-    uploaded_file = st.file_uploader("Upload Audio/Video", type=['mp3', 'mp4', 'm4a', 'wav'])
-    if uploaded_file and st.button("Transcribe File"):
+    uploaded = st.file_uploader("Upload Audio/Video", type=['mp3', 'mp4', 'wav', 'm4a'])
+    if uploaded and st.button("Transcribe Upload"):
+        # Save temp file
         with open("temp_upload.mp4", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        transcribe("temp_upload.mp4")
-
+            f.write(uploaded.getbuffer())
+        transcribe_media("temp_upload.mp4")
