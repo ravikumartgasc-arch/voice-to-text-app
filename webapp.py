@@ -18,41 +18,44 @@ except Exception as e:
 
 st.set_page_config(page_title="Universal AI Transcriber", layout="centered")
 st.title("🎙️ Universal AI Transcriber")
-st.caption("Powered by Gemini 2.5 Flash • Optimized for Speed")
+st.caption("Mode: iOS Emulation (Bypasses 403 Errors)")
 
-# --- 2. DOWNLOADER (AUDIO ONLY FIX) ---
+# --- 2. DOWNLOADER (The "iPhone" Fix) ---
 def download_audio(url):
     st.info(f"⏳ Connecting to: {url}...")
     filename_base = "downloaded_audio"
     
-    # Cleanup old files
+    # Cleanup
     for ext in ['.mp3', '.m4a', '.wav', '.webm']:
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
-    # TRICK: Download Audio Only (Bypasses Video Blocks)
+    # TRICK: Pretend to be an iPhone App
     ydl_opts = {
-        'format': 'bestaudio/best', # Request audio only
+        'format': 'bestaudio/best',
         'outtmpl': filename_base + '.%(ext)s',
         'quiet': True,
         'no_warnings': True,
-        'postprocessors': [{  # Force convert to MP3 for compatibility
+        # This argument forces YouTube to treat us like a Mobile App
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['ios', 'android'],
+            }
+        },
+        'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        # Use a generic User-Agent to look like a standard PC
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            # The file will be .mp3 because of the postprocessor
             final_filename = "downloaded_audio.mp3"
             
             if not os.path.exists(final_filename) or os.path.getsize(final_filename) == 0:
-                st.error("❌ Download failed. YouTube blocked the server IP.")
+                st.error("❌ Download failed. Server blocked.")
                 return None
             
             st.success(f"✅ Audio Downloaded!")
@@ -70,9 +73,7 @@ def transcribe_media(file_path):
     st.write(f"📄 Processing file...")
 
     try:
-        st.info("🚀 Uploading to Gemini 2.5...")
-        
-        # Upload
+        st.info("🚀 Uploading to Gemini...")
         video_file = client.files.upload(file=file_path)
         
         with st.spinner("⏳ AI is processing..."):
@@ -81,18 +82,14 @@ def transcribe_media(file_path):
                 video_file = client.files.get(name=video_file.name)
 
         if video_file.state.name == "FAILED":
-            st.error(f"❌ Processing Failed. Google rejected the file.")
+            st.error(f"❌ Processing Failed.")
             return
 
         st.success("✅ Transcribing...")
         
-        # Generate
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=[
-                video_file,
-                "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."
-            ]
+            contents=[video_file, "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."]
         )
         
         if response.text:
@@ -103,7 +100,7 @@ def transcribe_media(file_path):
         st.error(f"❌ Error: {e}")
 
 # --- UI ---
-tab1, tab2 = st.tabs(["🔗 YouTube/Link", "📂 Upload File"])
+tab1, tab2 = st.tabs(["🔗 YouTube Link", "📂 Upload File"])
 
 with tab1:
     url = st.text_input("Paste Link:")
