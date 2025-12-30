@@ -1,3 +1,3 @@
 streamlit
-google-generativeai>=0.7.2
-git+https://github.com/yt-dlp/yt-dlp.git@master
+google-genai
+yt-dlp>=2024.12.0
