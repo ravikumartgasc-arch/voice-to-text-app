@@ -2,41 +2,35 @@ import streamlit as st
 import os
 import time
 import yt_dlp
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # --- CONFIGURATION ---
+# PASTE YOUR API KEY HERE
 API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw"
 
-genai.configure(api_key=API_KEY)
+# 1. SETUP CLIENT (NEW SDK)
+try:
+    client = genai.Client(api_key=API_KEY)
+except Exception as e:
+    st.error(f"❌ Client Error: {e}")
+    st.stop()
 
 st.set_page_config(page_title="Universal AI Transcriber", layout="centered")
-st.title("🎙️ Universal AI Transcriber")
+st.title("🎙️ Universal AI Transcriber (2.5 Flash)")
+st.caption("Powered by Gemini 2.5 Flash • Supports YouTube, Facebook, Uploads")
 
-# --- SIDEBAR: SYSTEM DIAGNOSTICS ---
-# This helps us see if the library update worked
-st.sidebar.header("System Status")
-st.sidebar.text(f"Library Version: {genai.__version__}")
-
-if st.sidebar.button("Check Available Models"):
-    try:
-        st.sidebar.write("Fetching models...")
-        models = [m.name for m in genai.list_models()]
-        st.sidebar.success("Connection works!")
-        st.sidebar.json(models)
-    except Exception as e:
-        st.sidebar.error(f"Error: {e}")
-
-# --- 1. DOWNLOADER ---
+# --- 2. DOWNLOADER ---
 def download_video(url):
     st.info(f"⏳ Connecting to: {url}...")
     filename_base = "downloaded_media"
     
-    # Cleanup old files
+    # Cleanup
     for ext in ['.mp4', '.m4a', '.mp3', '.webm', '.mkv']:
         if os.path.exists(filename_base + ext):
             os.remove(filename_base + ext)
 
-    # Force MP4 to prevent format errors
+    # Force MP4 for compatibility
     ydl_opts = {
         'format': 'best[ext=mp4]/best', 
         'outtmpl': filename_base + '.%(ext)s',
@@ -58,41 +52,39 @@ def download_video(url):
         st.error(f"❌ Download Error: {e}")
         return None
 
-# --- 2. TRANSCRIBE ---
+# --- 3. TRANSCRIBE (NEW SDK SYNTAX) ---
 def transcribe_media(file_path):
     if not os.path.exists(file_path):
         st.error("❌ File not found.")
         return
 
-    # MIME Type Fix (Crucial for Cloud)
-    mime_type = "video/mp4"
-    if file_path.endswith(".mp3"): mime_type = "audio/mp3"
-    elif file_path.endswith(".wav"): mime_type = "audio/wav"
-    elif file_path.endswith(".m4a"): mime_type = "audio/mp4"
-    elif file_path.endswith(".ogg"): mime_type = "audio/ogg"
-        
-    st.write(f"📄 Processing as: `{mime_type}`")
+    st.write(f"📄 Processing file: `{file_path}`")
 
     try:
-        st.info("🚀 Uploading to Gemini...")
-        video_file = genai.upload_file(path=file_path, mime_type=mime_type)
+        st.info("🚀 Uploading to Gemini 2.5...")
+        
+        # New Upload Syntax
+        video_file = client.files.upload(file=file_path)
         
         with st.spinner("⏳ AI is processing (this takes 10-30s)..."):
             while video_file.state.name == "PROCESSING":
                 time.sleep(2)
-                video_file = genai.get_file(video_file.name)
+                video_file = client.files.get(name=video_file.name)
 
         if video_file.state.name == "FAILED":
-            st.error(f"❌ Processing Failed. Details: {video_file}")
+            st.error(f"❌ Processing Failed. Google rejected the file.")
             return
 
         st.success("✅ Transcribing...")
         
-        # CORRECT MODEL NAME
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        
-        prompt = "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."
-        response = model.generate_content([video_file, prompt])
+        # New Generate Syntax
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                video_file,
+                "Transcribe this audio exactly as spoken (Verbatim). Do not translate. Identify the language."
+            ]
+        )
         
         if response.text:
             st.text_area("Result:", value=response.text, height=400)
