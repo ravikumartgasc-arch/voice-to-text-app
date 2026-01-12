@@ -6,7 +6,7 @@ from google.genai import types
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY HERE
-API_KEY = "AIzaSyBiJrO6riZ2Fhr85JVSEh0PQuzMrkBEhhw"
+API_KEY = "AIzaSyCKlvFfDUJs0f1cRwf5CXlZOM1X1oAKaFA"
 
 # 1. SETUP CLIENT
 try:
@@ -81,3 +81,4 @@ if uploaded_file is not None:
             f.write(uploaded_file.getbuffer())
         
         transcribe_media(save_path)
+
